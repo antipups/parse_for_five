@@ -1,14 +1,19 @@
+import random
 import time
 import requests
 import re
 import openpyxl
 import threading
+import parse_proxy
 
 
 headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36',
            'ctaapi-version': '1.1'}
-wb = openpyxl.load_workbook(filename='books.xlsx')
+wb = openpyxl.load_workbook(filename='books.xlsx')  # октрываем excel для работы
 sheet = wb['Лист1']
+proxy = parse_proxy.parse_proxy()   # берем рабочие прокси (чтоб не забанил сайт)
+user_agents = open('user_agents.txt', 'r').read()
+user_agents = user_agents.split('\n')
 
 
 def write_to_excel(row, *tuple_of_data):
@@ -18,10 +23,7 @@ def write_to_excel(row, *tuple_of_data):
     :param tuple_of_data:   данные о самой компании, если они есть
     :return: ничего не возвращает, только сохраняет изменяемый файл
     """
-    # try:
-    #     row = len(list(sheet))
-    # except TypeError:
-    #     row = 1
+    print(row, tuple_of_data)
     if row == 1:    # если первая запись то пишет вначале поля
         name_of_coloms = ('Название', 'Описание', 'Адрес', 'Номер', 'Ссылка', 'Booth')  # сами поля
         for i in enumerate(name_of_coloms):
@@ -32,26 +34,36 @@ def write_to_excel(row, *tuple_of_data):
     wb.save('books.xlsx')
 
 
-def start_download(page):
-    html = requests.get(
-        'https://www.ces.tech/api/Exhibitors?searchTerm=&sortBy=alpha&filter=&pageNo=' + str(page) + '&pageSize=30',
-        headers=headers)
-    if html.status_code != 200:
-        quit()
+def start_download(page, row):
+    headers['user-agent'] = user_agents[random.randint(0, len(user_agents) - 1)]
+    while True:
+        temp_proxy = proxy[random.randint(0, len(proxy) - 1)]
+        try:
+            html = requests.get(
+                'https://www.ces.tech/api/Exhibitors?searchTerm=&sortBy=alpha&filter=&pageNo=' + str(page) + '&pageSize=30',
+                headers=headers,
+                proxies={'https': temp_proxy}
+            )
+            break
+        except OSError:
+            print('Прокси сосать')
+            temp_proxy = proxy[random.randint(0, len(proxy) - 1)]
+            continue
     # print(html.text)
     html = html.text[html.text.find('"exhibitors":') + 13:]
     while html.find('{"companyName"') > -1:
         html = html[html.find('{"companyName"'):]
-        print(html)
+        # print(html)
         current_company = html[:html.find(',{"companyName":"')]  # теперь current company - эта вся рассматриваемая компания\
         name_company = re.search(r'{\"companyName\":.*"alpha"', current_company).group()[16:-9]
         html = html[15:]
-        print(name_company)
+        # print(name_company)
         description_company = re.search(r'\"description\":[^:]*', current_company).group()[15:-15]
         companyLink = re.search(r'\"companyLink\":.*\",\"isCategorySponsor\":', current_company).group()[15:-22]
         about_company = requests.get(companyLink)  # html страница компании (для того чтоб парсить больше инфы)
         if about_company.status_code != 200:
             html = html[html.find('{"companyName"'):]
+            print('ПИЗДЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЦ', about_company.status_code)
             continue
         about_company = about_company.text
         address = about_company[
@@ -71,23 +83,19 @@ def start_download(page):
             booth = about_company[about_company.find('class="mys-floorPlanLink" style="">') + 35:]
             booth = booth[:booth.find('</a>')]
         # print(i, name_company, description_company, address, phone, url, booth)
-        write_to_excel(page, name_company, description_company, address, phone, url, booth)
+        write_to_excel(row, name_company, description_company, address, phone, url, booth)
+        row += 1
 
 
 if __name__ == '__main__':
     page = 1  # страница по счёту которую мы парсим
-    # print(requests.get('https://www.ces.tech/api/Exhibitors?searchTerm=&sortBy=alpha&filter=&pageNo=5&pageSize=30',
-    #       headers=headers).text)
-    # quit()
-    while True:
-        # threading.Thread(target=start_download, args=(page,)).start()
-        # time.sleep(1)
-        start_download(page)
-        quit()
-        # quit()
+    row = 1  # какая по счёту запись
+    while page < 151:
+        # threading.Thread(target=start_download, args=(page, row, )).start()
+        start_download(page, row)
         # time.sleep(3)
-        # if page % 50 == 0:
+        # if page % 20 == 0:
         #     time.sleep(5)
-        #     quit()
+        row += 31
         page += 1
 
