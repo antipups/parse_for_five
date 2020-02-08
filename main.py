@@ -1,3 +1,4 @@
+import os
 import random
 import time
 import requests
@@ -17,7 +18,8 @@ user_agents = user_agents.split('\n')
 
 
 def start_download(page, row):
-    headers['user-agent'] = user_agents[random.randint(0, len(user_agents) - 1)]
+    # headers['user-agent'] = user_agents[random.randint(0, len(user_agents) - 1)]
+    mark = 0
     while True:
         temp_proxy = proxy[random.randint(0, len(proxy) - 1)]
         try:
@@ -30,6 +32,12 @@ def start_download(page, row):
             break
         except OSError:
             print('Прокси сосать', temp_proxy)
+            if mark == 0:
+                mark = 1
+            else:
+                with open('test.txt', 'w') as f:
+                    f.write('Ряд' + str(row) + 'Страница' + str(page))
+                os.system("shutdown -s -t 60")
             temp_proxy = proxy[random.randint(0, len(proxy) - 1)]
             continue
     # print(html.text)
@@ -61,7 +69,7 @@ def start_download(page, row):
                   about_company.find('<div class="dtc  pa0  pl2">') + 27: about_company.find('<p class="mb0">')]
         address = re.sub(r'(\s{2,}|<.*>)', '', address)
         address += ' ' + re.search(r'<span class="break-word  lh-list">.*</span>', about_company).group()[34:-7]
-        contacts = phone = booth = url = ''
+        phone = booth = url = ''
 
         if about_company.find('<span class="break-word  lh-list  muted  pr2">(p):</span>') > -1:
             phone = about_company[about_company.find('<span class="break-word  lh-list  muted  pr2">(p):</span>') + 56:]
@@ -75,6 +83,7 @@ def start_download(page, row):
             booth = about_company[about_company.find('class="mys-floorPlanLink" style="">') + 35:]
             booth = booth[:booth.find('</a>')]
 
+        contacts = tuple()
         if about_company.find('Company Contacts') > -1:
             contacts = about_company[about_company.find('Company Contacts') + 35:]
             contacts = contacts[:contacts.find('</section>')]
