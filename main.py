@@ -16,24 +16,6 @@ user_agents = open('user_agents.txt', 'r').read()
 user_agents = user_agents.split('\n')
 
 
-def write_to_excel(row, *tuple_of_data):
-    """
-        Функция записи в xlsx файл:
-    :param row: передаваемый ряд (какая по счёту запись или же компания)
-    :param tuple_of_data:   данные о самой компании, если они есть
-    :return: ничего не возвращает, только сохраняет изменяемый файл
-    """
-    print(row, tuple_of_data)
-    if row == 1:    # если первая запись то пишет вначале поля
-        name_of_coloms = ('Название', 'Описание', 'Адрес', 'Номер', 'Ссылка', 'Booth')  # сами поля
-        for i in enumerate(name_of_coloms):
-            sheet.cell(row, i[0] + 1, i[1])
-    row += 1  # увеличиваем ряд на 1, из-за полей
-    for i in enumerate(tuple_of_data):
-        sheet.cell(row, i[0] + 1, i[1])
-    wb.save('books.xlsx')
-
-
 def start_download(page, row):
     headers['user-agent'] = user_agents[random.randint(0, len(user_agents) - 1)]
     while True:
@@ -42,11 +24,12 @@ def start_download(page, row):
             html = requests.get(
                 'https://www.ces.tech/api/Exhibitors?searchTerm=&sortBy=alpha&filter=&pageNo=' + str(page) + '&pageSize=30',
                 headers=headers,
-                proxies={'https': temp_proxy}
+                # proxies={'https': temp_proxy}
             )
+            print('sex')
             break
         except OSError:
-            print('Прокси сосать')
+            print('Прокси сосать', temp_proxy)
             temp_proxy = proxy[random.randint(0, len(proxy) - 1)]
             continue
     # print(html.text)
@@ -55,22 +38,31 @@ def start_download(page, row):
         html = html[html.find('{"companyName"'):]
         # print(html)
         current_company = html[:html.find(',{"companyName":"')]  # теперь current company - эта вся рассматриваемая компания\
+
         name_company = re.search(r'{\"companyName\":.*"alpha"', current_company).group()[16:-9]
+
         html = html[15:]
         # print(name_company)
+
         description_company = re.search(r'\"description\":[^:]*', current_company).group()[15:-15]
+        description_company = re.sub(r'\\\w', '', description_company)
+
         companyLink = re.search(r'\"companyLink\":.*\",\"isCategorySponsor\":', current_company).group()[15:-22]
+        # companyLink = 'https://ces20.mapyourshow.com/8_0/exhibitor/exhibitor-details.cfm?ExhID=T0012439'
         about_company = requests.get(companyLink)  # html страница компании (для того чтоб парсить больше инфы)
         if about_company.status_code != 200:
             html = html[html.find('{"companyName"'):]
-            print('ПИЗДЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕЦ', about_company.status_code)
+            print('Ошибка')
             continue
+
         about_company = about_company.text
+
         address = about_company[
                   about_company.find('<div class="dtc  pa0  pl2">') + 27: about_company.find('<p class="mb0">')]
-        address = ''.join(tuple(x if not x.isspace() else '' for x in re.sub(r'(/?<br.*/>)', '', address)))
+        address = re.sub(r'(\s{2,}|<.*>)', '', address)
         address += ' ' + re.search(r'<span class="break-word  lh-list">.*</span>', about_company).group()[34:-7]
-        phone = booth = url = ''
+        contacts = phone = booth = url = ''
+
         if about_company.find('<span class="break-word  lh-list  muted  pr2">(p):</span>') > -1:
             phone = about_company[about_company.find('<span class="break-word  lh-list  muted  pr2">(p):</span>') + 56:]
             phone = re.search(r'>.*<', phone).group()[1:-1]
@@ -82,14 +74,30 @@ def start_download(page, row):
         if about_company.find('class="mys-floorPlanLink" style="">') > -1:
             booth = about_company[about_company.find('class="mys-floorPlanLink" style="">') + 35:]
             booth = booth[:booth.find('</a>')]
-        # print(i, name_company, description_company, address, phone, url, booth)
-        write_to_excel(row, name_company, description_company, address, phone, url, booth)
+
+        if about_company.find('Company Contacts') > -1:
+            contacts = about_company[about_company.find('Company Contacts') + 35:]
+            contacts = contacts[:contacts.find('</section>')]
+            contacts = re.findall(r'<li>.*<\/li>', contacts, flags=re.DOTALL)
+            contacts = ''.join(map(lambda x: re.sub(r'\s*(</?li>|<.{0,2}br.{0,2}>)\s*', ' ', x), contacts))[1:-1].split('  ')
+            contacts = tuple(map(lambda x: (x[:x.rfind(' ')], x[x.rfind(' '):]), contacts))
+            all_contacts = list()
+            for persona in contacts:
+                for i in persona:
+                    all_contacts.append(i)
+            contacts = tuple(all_contacts)
+        # print(row, name_company, description_company, address)
+        # print(phone, url, booth, contacts)
+
+        for i in enumerate((name_company, description_company, address, phone, url, booth) + contacts):
+            sheet.cell(row, i[0] + 1, i[1])
+        wb.save('books.xlsx')
         row += 1
 
 
 if __name__ == '__main__':
     page = 1  # страница по счёту которую мы парсим
-    row = 1  # какая по счёту запись
+    row = 2  # какая по счёту запись
     while page < 151:
         # threading.Thread(target=start_download, args=(page, row, )).start()
         start_download(page, row)
@@ -98,4 +106,3 @@ if __name__ == '__main__':
         #     time.sleep(5)
         row += 31
         page += 1
-
